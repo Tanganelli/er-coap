@@ -76,7 +76,7 @@ typedef struct{
 	blocking_response_handler request_callback;
 }request_parameters_t;
 
-static TaskHandle_t handle;
+
 void coap_blocking_request(void *pvParameters);
 #define COAP_BLOCKING_REQUEST(server_addr, server_port, request, chunk_handler) \
   { \
@@ -85,7 +85,8 @@ void coap_blocking_request(void *pvParameters);
     request_parameters.remote_ipaddr = server_addr; \
     request_parameters.remote_port = server_port; \
     request_parameters.request_callback = chunk_handler; \
-    xTaskCreate(coap_blocking_request, "client", 256, &request_parameters, 2, &handle); \
+    /*xTaskCreate(coap_blocking_request, "client", 256, &request_parameters, 2, NULL);*/ \
+	coap_blocking_request(&request_parameters); \
   }
 /*---------------------------------------------------------------------------*/
 

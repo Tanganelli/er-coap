@@ -35,8 +35,6 @@
  *      Inspired by RESTful Contiki by Dogan Yazar.
  * \author
  *      Matthias Kovatsch <kovatsch@inf.ethz.ch>
- * \author
- *      Giacomo Tanganelli <g.tanganelli@iet.unipi.it>
  */
 
 #ifndef REST_ENGINE_H_

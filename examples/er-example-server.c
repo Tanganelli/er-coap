@@ -34,8 +34,6 @@
  *      Erbium (Er) REST Engine example.
  * \author
  *      Matthias Kovatsch <kovatsch@inf.ethz.ch>
- * \author
- *      Giacomo Tanganelli <g.tanganelli@iet.unipi.it>
  */
 #include <espressif/esp_common.h>
 #include <esp/uart.h>
@@ -54,8 +52,16 @@
 #include <stdio.h>
 #include <ip_addr.h>
 #define PRINTF(...) printf(__VA_ARGS__)
-#define PRINT6ADDR(addr) ip_addr_debug_print(COAP_DEBUG, addr)
-#define PRINT4ADDR(addr) ip_addr_debug_print(COAP_DEBUG, addr)
+#define PRINT6ADDR(addr) printf("%u:%u:%u:%u:%u:%u:%u:%u\n", \
+         (ntohl(ipaddr->addr[0]) >> 16) & 0xffff, \
+         ntohl(ipaddr->addr[0]) & 0xffff, \
+         (ntohl(ipaddr->addr[1]) >> 16) & 0xffff, \
+         ntohl(ipaddr->addr[1]) & 0xffff, \
+         (ntohl(ipaddr->addr[2]) >> 16) & 0xffff, \
+         ntohl(ipaddr->addr[2]) & 0xffff, \
+         (ntohl(ipaddr->addr[3]) >> 16) & 0xffff, \
+         ntohl(ipaddr->addr[3]) & 0xffff));)
+#define PRINT4ADDR(addr) printf("%u.%u.%u.%u", addr != NULL ? ip4_addr1_16(addr) : 0, addr != NULL ? ip4_addr2_16(addr) : 0, addr != NULL ? ip4_addr3_16(addr) : 0, addr != NULL ? ip4_addr4_16(addr) : 0);
 #define PRINTLLADDR(addr)
 #else
 #define PRINTF(...)

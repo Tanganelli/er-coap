@@ -48,7 +48,15 @@
 #include <stdio.h>
 #include <ip_addr.h>
 #define PRINTF(...) printf(__VA_ARGS__)
-#define PRINT6ADDR(addr) ip_addr_debug_print(COAP_DEBUG, addr)
+#define PRINT6ADDR(addr) printf("%u:%u:%u:%u:%u:%u:%u:%u\n", \
+         (ntohl(ipaddr->addr[0]) >> 16) & 0xffff, \
+         ntohl(ipaddr->addr[0]) & 0xffff, \
+         (ntohl(ipaddr->addr[1]) >> 16) & 0xffff, \
+         ntohl(ipaddr->addr[1]) & 0xffff, \
+         (ntohl(ipaddr->addr[2]) >> 16) & 0xffff, \
+         ntohl(ipaddr->addr[2]) & 0xffff, \
+         (ntohl(ipaddr->addr[3]) >> 16) & 0xffff, \
+         ntohl(ipaddr->addr[3]) & 0xffff));)
 #define PRINT4ADDR(addr) printf("%u.%u.%u.%u", addr != NULL ? ip4_addr1_16(addr) : 0, addr != NULL ? ip4_addr2_16(addr) : 0, addr != NULL ? ip4_addr3_16(addr) : 0, addr != NULL ? ip4_addr4_16(addr) : 0);
 #define PRINTLLADDR(addr)
 #else
@@ -63,6 +71,7 @@
 /*---------------------------------------------------------------------------*/
 static service_callback_t service_cbk = NULL;
 QueueHandle_t *receivequeue_ptr;
+static QueueHandle_t responsequeue;
 
 ///* Dimensions the buffer that the task being created will use as its stack.
 //NOTE:  This is the number of words the stack will hold, not the number of
@@ -101,7 +110,9 @@ static int coap_receive(void) {
 		struct ip_addr *addr = &datagram.addr;
 		u16_t port = datagram.port;
 
-		PRINTF("receiving UDP datagram from: ");PRINT4ADDR(addr);PRINTF(":%u\n  Length: %u\n", port, p->len);
+		PRINTF("receiving UDP datagram from: ");
+		PRINT4ADDR(addr);
+		PRINTF(":%u\n  Length: %u\n", port, p->len);
 
 		erbium_status_code = coap_parse_message(message, p->payload, p->len);
 
@@ -110,8 +121,11 @@ static int coap_receive(void) {
 			message->port = port;
 			/*TODO duplicates suppression, if required by application */
 
-			PRINTF("  Parsed: v %u, t %u, tkl %u, c %u, mid %u\n", message->version,
-					message->type, message->token_len, message->code, message->mid);PRINTF("  URL: %.*s\n", message->uri_path_len, message->uri_path);PRINTF("  Payload: %.*s\n", message->payload_len, message->payload);
+			PRINTF("  Parsed: v %u, t %u, tkl %u, c %u, mid %u\n",
+					message->version, message->type, message->token_len,
+					message->code, message->mid);
+			PRINTF("  URL: %.*s\n", message->uri_path_len, message->uri_path);
+			PRINTF("  Payload: %.*s\n", message->payload_len, message->payload);
 
 			/* handle requests */
 			if (message->code >= COAP_GET && message->code <= COAP_DELETE) {
@@ -142,8 +156,10 @@ static int coap_receive(void) {
 					}
 					if (coap_get_header_block2(message, &block_num, NULL,
 							&block_size, &block_offset)) {
-						PRINTF("Blockwise: block request %u (%u/%u) @ %u bytes\n",
-								block_num, block_size, COAP_MAX_BLOCK_SIZE, block_offset);
+						PRINTF(
+								"Blockwise: block request %u (%u/%u) @ %u bytes\n",
+								block_num, block_size, COAP_MAX_BLOCK_SIZE,
+								block_offset);
 						block_size = MIN(block_size, COAP_MAX_BLOCK_SIZE);
 						new_offset = block_offset;
 					}
@@ -175,13 +191,14 @@ static int coap_receive(void) {
 
 									/* unchanged new_offset indicates that resource is unaware of blockwise transfer */
 									if (new_offset == block_offset) {
-										PRINTF
-										("Blockwise: unaware resource with payload length %u/%u\n",
-												response->payload_len, block_size);
+										PRINTF(
+												"Blockwise: unaware resource with payload length %u/%u\n",
+												response->payload_len,
+												block_size);
 										if (block_offset
 												>= response->payload_len) {
-											PRINTF
-											("handle_incoming_data(): block_offset >= response->payload_len\n");
+											PRINTF(
+													"handle_incoming_data(): block_offset >= response->payload_len\n");
 
 											response->code = BAD_OPTION_4_02;
 											coap_set_payload(response,
@@ -204,7 +221,8 @@ static int coap_receive(void) {
 
 										/* resource provides chunk-wise data */
 									} else {
-										PRINTF("Blockwise: blockwise resource, new offset %d\n",
+										PRINTF(
+												"Blockwise: blockwise resource, new offset %d\n",
 												new_offset);
 										coap_set_header_block2(response,
 												block_num,
@@ -223,8 +241,8 @@ static int coap_receive(void) {
 
 									/* Resource requested Block2 transfer */
 								} else if (new_offset != 0) {
-									PRINTF
-									("Blockwise: no block option for blockwise resource, using block size %u\n",
+									PRINTF(
+											"Blockwise: no block option for blockwise resource, using block size %u\n",
 											COAP_MAX_BLOCK_SIZE);
 
 									coap_set_header_block2(response, 0,
@@ -273,12 +291,13 @@ static int coap_receive(void) {
 				}
 
 				if ((transaction = coap_get_transaction_by_mid(message->mid))) {
+					PRINTF("transaction found\n");
 					/* free transaction memory before callback, as it may create a new transaction */
 					restful_response_handler callback = transaction->callback;
 					void *callback_data = transaction->callback_data;
 
 					coap_clear_transaction(transaction);
-
+					PRINTF("clear_transaction\n");
 					/* check if someone registered for the response */
 					if (callback) {
 						callback(callback_data, message);
@@ -339,24 +358,7 @@ static int coap_receive(void) {
 /*---------------------------------------------------------------------------*/
 void coap_init_engine(QueueHandle_t * queue) {
 	receivequeue_ptr = queue;
-	//coap_engine();
-//	TaskHandle_t xHandle = NULL;
-//
-//	/* Create the task without using any dynamic memory allocation. */
-//	xHandle = xTaskCreateStatic(
-//				  coap_engine,       /* Function that implements the task. */
-//				  "coap_engine",          /* Text name for the task. */
-//				  STACK_SIZE,      /* Number of indexes in the xStack array. */
-//				  NULL,    /* Parameter passed into the task. */
-//				  tskIDLE_PRIORITY,/* Priority at which the task is created. */
-//				  xStack,          /* Array to use as the task's stack. */
-//				  &xTaskBuffer );  /* Variable to hold the task's data structure. */
-//
-//	/* puxStackBuffer and pxTaskBuffer were not NULL, so the task will have
-//	been created, and xHandle will be the task's handle.  Use the handle
-//	to suspend the task. */
-//	//vTaskSuspend( xHandle );
-
+	responsequeue = xQueueCreate(1, sizeof(uint8_t));
 	xTaskCreate(coap_engine, "coap_engine", 256, NULL, 2, NULL);
 }
 /*---------------------------------------------------------------------------*/
@@ -403,22 +405,24 @@ void coap_engine(void *pvParameters) {
 /*---------------------------------------------------------------------------*/
 void coap_blocking_request_callback(void *callback_data, void *response) {
 	struct request_state_t *state = (struct request_state_t *) callback_data;
-
+	PRINTF("coap_blocking_request_callback\n");
 	state->response = (coap_packet_t *) response;
-	xTaskNotify( handle, 0x01, eSetValueWithOverwrite );
+	uint8_t msg = 1;
+	xQueueSend(responsequeue, &msg, 0);
 //	process_poll(state->process);
 
 }
 /*---------------------------------------------------------------------------*/
 void coap_blocking_request(void *pvParameters) {
-	request_parameters_t *params =
-			(request_parameters_t*) pvParameters;
+	request_parameters_t *params = (request_parameters_t*) pvParameters;
+	PRINTF("coap_blocking_request to ");
 	struct request_state_t *state = &params->request_state;
 	coap_packet_t *request = params->request;
 	ip_addr_t *remote_ipaddr = params->remote_ipaddr;
 	uint16_t remote_port = params->remote_port;
 	blocking_response_handler request_callback = params->request_callback;
-
+	PRINT4ADDR(remote_ipaddr);
+	PRINTF(":%d\n", remote_port);
 	static uint8_t more;
 	static uint32_t res_block;
 	static uint8_t block_error;
@@ -445,18 +449,14 @@ void coap_blocking_request(void *pvParameters) {
 					state->transaction->packet, remote_ipaddr, remote_port);
 
 			coap_send_transaction(state->transaction);
-			PRINTF("Requested #%lu (MID %u)\n", state->block_num, request->mid);
-			uint32_t ulNotifiedValue;
-			while (1) {
-				xTaskNotifyWait(0x00, /* Don't clear any notification bits on entry. */
-				0xffffffff, /* Reset the notification value to 0 on exit. */
-				&ulNotifiedValue, /* Notified value pass out in ulNotifiedValue. */
-				pdMS_TO_TICKS(1000)); /* Block for 1 second. */
-				if ((ulNotifiedValue & 0x01) != 0) {
-					/* Bit 0 was set - process whichever event is represented by bit 0. */
-					break;
-				}
+			PRINTF("Requested #%u (MID %u)\n", state->block_num, request->mid);
+			uint8_t resp;
+
+			/* Wait for the next event. */
+			while (xQueueReceive(responsequeue, &resp, 1000) != pdTRUE) {
+
 			}
+			PRINTF("Response received\n");
 
 //			PT_YIELD_UNTIL(&state->pt, ev == PROCESS_EVENT_POLL);
 
@@ -468,14 +468,15 @@ void coap_blocking_request(void *pvParameters) {
 			coap_get_header_block2(state->response, &res_block, &more, NULL,
 			NULL);
 
-			PRINTF("Received #%lu%s (%u bytes)\n", res_block, more ? "+" : "",
+			PRINTF("Received #%u%s (%u bytes)\n", res_block, more ? "+" : "",
 					state->response->payload_len);
 
 			if (res_block == state->block_num) {
+				PRINTF("call callback");
 				request_callback(state->response);
 				++(state->block_num);
 			} else {
-				PRINTF("WRONG BLOCK %lu/%lu\n", res_block, state->block_num);
+				PRINTF("WRONG BLOCK %u/%u\n", res_block, state->block_num);
 				++block_error;
 			}
 		} else {
@@ -483,7 +484,7 @@ void coap_blocking_request(void *pvParameters) {
 			return;
 		}
 	} while (more && block_error < COAP_MAX_ATTEMPTS);
-
+	PRINTF("client end\n");
 }
 /*---------------------------------------------------------------------------*/
 /*- REST Engine Interface ---------------------------------------------------*/

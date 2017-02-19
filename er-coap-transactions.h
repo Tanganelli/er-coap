@@ -34,8 +34,6 @@
  *      CoAP module for reliable transport
  * \author
  *      Matthias Kovatsch <kovatsch@inf.ethz.ch>
- * \author
- *      Giacomo Tanganelli <g.tanganelli@iet.unipi.it>
  */
 
 #ifndef COAP_TRANSACTIONS_H_
